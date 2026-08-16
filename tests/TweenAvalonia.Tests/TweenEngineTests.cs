@@ -182,7 +182,8 @@ public class TweenEngineTests
     public void Delay_HoldsStartValueUntilElapsed()
     {
         var target = new TestTarget();
-        Tween tween = Tween.To(target, TestTarget.ValueProperty, 10, Duration, Linear, delay: TimeSpan.FromMilliseconds(50));
+        Tween tween = Tween.To(target, TestTarget.ValueProperty, 10, Duration, Linear,
+            delay: TimeSpan.FromMilliseconds(50));
 
         TweenEngine.Instance.Update(TimeSpan.FromMilliseconds(50));
         Assert.That(target.Value, Is.Zero);

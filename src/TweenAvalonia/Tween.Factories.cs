@@ -22,7 +22,8 @@ public readonly partial struct Tween
     /// <summary>
     /// Animates a visual's opacity to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Opacity(Visual target, double to, TimeSpan duration, IEasing? easing = null, TimeSpan delay = default)
+    public static Tween Opacity(Visual target, double to, TimeSpan duration, IEasing? easing = null,
+        TimeSpan delay = default)
         => To(target, Visual.OpacityProperty, to, duration, easing, delay);
 
     /// <summary>
@@ -34,13 +35,15 @@ public readonly partial struct Tween
     /// <summary>
     /// Animates a solid brush's color to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Color(SolidColorBrush target, Color to, double duration = 1, IEasing? easing = null, double delay = 0)
+    public static Tween Color(SolidColorBrush target, Color to, double duration = 1, IEasing? easing = null,
+        double delay = 0)
         => To(target, SolidColorBrush.ColorProperty, to, duration, easing, delay);
 
     /// <summary>
     /// Animates a solid brush's color to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Color(SolidColorBrush target, Color to, TimeSpan duration, IEasing? easing = null, TimeSpan delay = default)
+    public static Tween Color(SolidColorBrush target, Color to, TimeSpan duration, IEasing? easing = null,
+        TimeSpan delay = default)
         => To(target, SolidColorBrush.ColorProperty, to, duration, easing, delay);
 
     /// <summary>
@@ -52,13 +55,15 @@ public readonly partial struct Tween
     /// <summary>
     /// Animates a control's margin to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Margin(Layoutable target, Thickness to, double duration = 1, IEasing? easing = null, double delay = 0)
+    public static Tween Margin(Layoutable target, Thickness to, double duration = 1, IEasing? easing = null,
+        double delay = 0)
         => To(target, Layoutable.MarginProperty, to, duration, easing, delay);
 
     /// <summary>
     /// Animates a control's margin to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Margin(Layoutable target, Thickness to, TimeSpan duration, IEasing? easing = null, TimeSpan delay = default)
+    public static Tween Margin(Layoutable target, Thickness to, TimeSpan duration, IEasing? easing = null,
+        TimeSpan delay = default)
         => To(target, Layoutable.MarginProperty, to, duration, easing, delay);
 
     /// <summary>
@@ -70,13 +75,15 @@ public readonly partial struct Tween
     /// <summary>
     /// Animates a control's width to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Width(Layoutable target, double to, double duration = 1, IEasing? easing = null, double delay = 0)
+    public static Tween Width(Layoutable target, double to, double duration = 1, IEasing? easing = null,
+        double delay = 0)
         => To(target, Layoutable.WidthProperty, to, duration, easing, delay);
 
     /// <summary>
     /// Animates a control's width to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Width(Layoutable target, double to, TimeSpan duration, IEasing? easing = null, TimeSpan delay = default)
+    public static Tween Width(Layoutable target, double to, TimeSpan duration, IEasing? easing = null,
+        TimeSpan delay = default)
         => To(target, Layoutable.WidthProperty, to, duration, easing, delay);
 
     /// <summary>
@@ -88,13 +95,15 @@ public readonly partial struct Tween
     /// <summary>
     /// Animates a control's height to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Height(Layoutable target, double to, double duration = 1, IEasing? easing = null, double delay = 0)
+    public static Tween Height(Layoutable target, double to, double duration = 1, IEasing? easing = null,
+        double delay = 0)
         => To(target, Layoutable.HeightProperty, to, duration, easing, delay);
 
     /// <summary>
     /// Animates a control's height to <paramref name="to"/>, starting from its current value.
     /// </summary>
-    public static Tween Height(Layoutable target, double to, TimeSpan duration, IEasing? easing = null, TimeSpan delay = default)
+    public static Tween Height(Layoutable target, double to, TimeSpan duration, IEasing? easing = null,
+        TimeSpan delay = default)
         => To(target, Layoutable.HeightProperty, to, duration, easing, delay);
 
     /// <summary>

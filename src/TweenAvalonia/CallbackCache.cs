@@ -36,7 +36,8 @@ internal static class CallbackCache
             (target, value) => callback((TTarget)target!, value);
     }
 
-    internal static Action<object?> WrapComplete<TTarget>(TTarget target, Action<TTarget> callback) where TTarget : class
+    internal static Action<object?> WrapComplete<TTarget>(TTarget target, Action<TTarget> callback)
+        where TTarget : class
     {
         var key = new Key(callback.Method, callback.Target);
         if (Cache.TryGetValue(key, out Delegate? cached))

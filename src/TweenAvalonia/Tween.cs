@@ -38,7 +38,8 @@ public readonly partial struct Tween
     /// Tracks the newest tween per target property so starting a new one
     /// supersedes (silently stops) the previous one.
     /// </summary>
-    private static readonly ConditionalWeakTable<AvaloniaObject, Dictionary<AvaloniaProperty, TweenInstance>> ActiveByTarget = new();
+    private static readonly ConditionalWeakTable<AvaloniaObject, Dictionary<AvaloniaProperty, TweenInstance>>
+        ActiveByTarget = new();
 
     /// <summary>
     /// Sentinel dictionary key for target-keyed <see cref="Custom{T}(T,T,Action{T},double,IEasing?,double,AvaloniaObject?)"/>
@@ -411,7 +412,8 @@ public readonly partial struct Tween
         }
 
         Tween tween = Start(TweenInstance<double>.Acquire(
-            TweenEngine.Instance, target, target != null ? CustomSentinel : null, 0d, 0d, duration, default, Linear, null));
+            TweenEngine.Instance, target, target != null ? CustomSentinel : null, 0d, 0d, duration, default, Linear,
+            null));
         if (onComplete != null)
         {
             tween.OnComplete(onComplete);
