@@ -20,7 +20,7 @@ Programmatic tweens for Avalonia. Avalonia's XAML `Transitions` are fire-and-for
 - [Architecture](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/ARCHITECTURE.md)
 - [Changelog](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/CHANGELOG.md)
 - [Contributing](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/CONTRIBUTING.md)
-- [License](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/LICENSE.md)
+- [License](https://github.com/SBUplakankus/tween-avalonia/blob/main/LICENSE)
 
 ## Install
 
