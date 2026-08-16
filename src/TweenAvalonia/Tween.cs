@@ -478,7 +478,7 @@ public readonly partial struct Tween
         Action<TTarget, TValue> onValueChange, TimeSpan duration, IEasing? easing, TimeSpan delay) where TTarget : class
     {
         ArgumentNullException.ThrowIfNull(onValueChange);
-        TweenInstance<TValue> instance = TweenInstance<TValue>.Acquire(
+        var instance = TweenInstance<TValue>.Acquire(
             TweenEngine.Instance, null, null, from, to, duration, delay, easing ?? DefaultEasing, null);
         instance.SetValueChange(target, CallbackCache.WrapValue(target, onValueChange));
         return Start(instance);
@@ -515,7 +515,7 @@ public readonly partial struct Tween
             return;
         }
 
-        Dictionary<AvaloniaProperty, TweenInstance> map = ActiveByTarget.GetOrCreateValue(target);
+        var map = ActiveByTarget.GetOrCreateValue(target);
         if (map.TryGetValue(property, out TweenInstance? existing) && !ReferenceEquals(existing, instance))
         {
             existing.Stop();

@@ -77,7 +77,7 @@ public sealed class TweenEngine
 
         for (int i = _tweens.Count - 1; i >= 0; i--)
         {
-            TweenInstance tween = _tweens[i];
+            var tween = _tweens[i];
             tween.Tick(delta);
             if (!tween.IsAlive)
             {

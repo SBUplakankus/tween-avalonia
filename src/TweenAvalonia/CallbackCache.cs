@@ -38,7 +38,7 @@ internal static class CallbackCache
 
     internal static Action<object?> WrapComplete<TTarget>(TTarget target, Action<TTarget> callback) where TTarget : class
     {
-        Key key = new(callback.Method, callback.Target);
+        var key = new Key(callback.Method, callback.Target);
         if (Cache.TryGetValue(key, out Delegate? cached))
         {
             return (Action<object?>)cached;
@@ -52,7 +52,7 @@ internal static class CallbackCache
     internal static Action<object?, double> WrapUpdate<TTarget>(TTarget target, Action<TTarget, double> callback)
         where TTarget : class
     {
-        Key key = new(callback.Method, callback.Target);
+        var key = new Key(callback.Method, callback.Target);
         if (Cache.TryGetValue(key, out Delegate? cached))
         {
             return (Action<object?, double>)cached;
@@ -66,7 +66,7 @@ internal static class CallbackCache
     internal static Action<object?, TValue> WrapValue<TTarget, TValue>(TTarget target, Action<TTarget, TValue> callback)
         where TTarget : class
     {
-        Key key = new(callback.Method, callback.Target);
+        var key = new Key(callback.Method, callback.Target);
         if (Cache.TryGetValue(key, out Delegate? cached))
         {
             return (Action<object?, TValue>)cached;
