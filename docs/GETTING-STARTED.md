@@ -1,24 +1,22 @@
 # Getting started
 
-## One line, done
-
-Tween factories follow PrimeTween's shape: only `(target, to)` required, everything else optional with defaults — duration `1s`, `Tween.DefaultEasing` (SineEaseInOut), no delay.
+Only `(target, to)` is required. Everything else defaults: 1s duration, `Tween.DefaultEasing` (SineEaseInOut), no delay.
 
 ```csharp
 Tween.Opacity(visual, 1);        // fade in over 1s
 Tween.Delay(0.5);                // a delay you can await
-Tween.Delay(0.5, () => Close()); // delay + callback
+Tween.Delay(0.5, () => Close()); // delay with callback
 ```
 
-`Tween.DefaultEasing` is settable, so an app can change the library-wide default once:
+Change the library-wide default once:
 
 ```csharp
 Tween.DefaultEasing = Easing.OutCubic;
 ```
 
-## Reusable settings
+## Settings
 
-Bundle a whole animation config into a value and reuse it everywhere:
+Bundle a config and reuse it:
 
 ```csharp
 var fadeIn = new TweenSettings<double>(to: 1, duration: 0.25, easing: Easing.OutCubic);
@@ -28,9 +26,9 @@ var openAnim = new TweenSettings<Thickness>(to: new Thickness(16), duration: 0.2
 Tween.Margin(sidebar, openAnim);
 ```
 
-## Target-keyed raw tweens — no stored handles
+## Raw tweens keyed by target
 
-`Custom` and `Delay` accept a `target:` — the raw tween joins the same latest-wins lifecycle as property tweens: a new tween with the same target supersedes the previous one, and `StopAll`/`CompleteAll` cover it. No `Tween _field` + `.Stop()` bookkeeping:
+`Custom` and `Delay` take an optional `target:`. The tween joins latest-wins and `StopAll`/`CompleteAll` like property tweens. No stored handle, no `Stop()` bookkeeping:
 
 ```csharp
 Tween.Custom(this, ArtOpacity, 0, v => ArtOpacity = v, 0.3, target: this);

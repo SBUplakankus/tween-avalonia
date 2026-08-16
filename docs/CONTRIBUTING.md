@@ -12,7 +12,7 @@ The build must stay at **0 warnings** on both target frameworks: `TreatWarningsA
 
 ## Code style
 
-- Every public member needs an XML doc comment — enforced by the build.
+- Every public member needs an XML doc comment. Enforced by the build.
 - No inline comments in code; XML docs only.
 - Keep the public surface minimal: defaults over parameters, `TweenSettings<T>` bundles over long signatures.
 
