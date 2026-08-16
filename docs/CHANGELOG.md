@@ -1,6 +1,14 @@
+<div align="center"><img src="../assets/TweenAvaloniaLogo.svg" alt="TweenAvalonia" width="48"/></div>
+
 # Changelog
 
 Semver: 0.x until the API is validated by a real consumer, then 1.0.
+
+## 0.3.1
+
+### Changed
+
+- Package icon and docs updated to the TweenAvalonia logo.
 
 ## 0.3.0 (unreleased)
 

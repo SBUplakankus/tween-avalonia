@@ -1,3 +1,5 @@
+<div align="center"><img src="../assets/TweenAvaloniaLogo.svg" alt="TweenAvalonia" width="48"/></div>
+
 # Getting started
 
 Only `(target, to)` is required. Everything else defaults: 1s duration, `Tween.DefaultEasing` (SineEaseInOut), no delay.

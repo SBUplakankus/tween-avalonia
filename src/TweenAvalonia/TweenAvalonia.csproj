@@ -12,12 +12,12 @@
 
     <PropertyGroup>
         <PackageId>TweenAvalonia</PackageId>
-        <Version>0.3.0</Version>
+        <Version>0.3.1</Version>
         <Authors>Seán Burke</Authors>
         <Description>Programmatic, controllable tweens for Avalonia: typed factories (double, Color, Point, Vector, Thickness, Rect) with PrimeTween-style defaults, Stop/Start/Pause/Resume/Complete handles, OnComplete/OnUpdate callbacks, await support, cancellation, TweenSettings, latest-wins superseding and one shared frame loop.</Description>
         <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageIcon>icon.png</PackageIcon>
+        <PackageIcon>TweenAvaloniaLogo.png</PackageIcon>
         <PackageTags>avalonia;tween;animation;ui</PackageTags>
         <RepositoryType>git</RepositoryType>
         <RepositoryUrl>https://github.com/SBUplakankus/tween-avalonia</RepositoryUrl>
@@ -36,7 +36,7 @@
 
     <ItemGroup>
         <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-        <None Include="..\..\assets\icon.png" Pack="true" PackagePath="\" />
+        <None Include="..\..\assets\TweenAvaloniaLogo.png" Pack="true" PackagePath="\" />
     </ItemGroup>
 
 </Project>

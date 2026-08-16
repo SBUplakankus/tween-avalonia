@@ -1,3 +1,5 @@
+<div align="center"><img src="../assets/TweenAvaloniaLogo.svg" alt="TweenAvalonia" width="48"/></div>
+
 # Quick start
 
 TweenAvalonia was built for a real problem. XeniaManager.BigScreen, a fullscreen game dashboard, needed an artwork crossfade that Avalonia's built-in animations could not express.

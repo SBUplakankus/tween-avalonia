@@ -1,3 +1,5 @@
+<div align="center"><img src="../assets/TweenAvaloniaLogo.svg" alt="TweenAvalonia" width="48"/></div>
+
 # Contributing
 
 ## Project structure
