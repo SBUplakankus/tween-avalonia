@@ -12,7 +12,7 @@
 
     <PropertyGroup>
         <PackageId>TweenAvalonia</PackageId>
-        <Version>0.2.0</Version>
+        <Version>0.3.0</Version>
         <Authors>tremo</Authors>
         <Description>Programmatic, controllable tweens for Avalonia: typed factories (double, Color, Point, Vector, Thickness, Rect) with PrimeTween-style defaults, Stop/Start/Pause/Resume/Complete handles, OnComplete/OnUpdate callbacks, await support, cancellation, TweenSettings, latest-wins superseding and one shared frame loop.</Description>
         <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>

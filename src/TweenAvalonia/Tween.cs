@@ -16,6 +16,13 @@ namespace TweenAvalonia;
 /// sensible default (1 second duration, <see cref="DefaultEasing"/>, no delay),
 /// so the common case reads as one line: <c>Tween.Opacity(visual, 0);</c>.
 /// </para>
+/// <para>
+/// Handles are structs wrapping a pooled instance plus a version; once a tween
+/// dies the instance returns to the pool and every stale handle becomes inert
+/// (except <see cref="OnComplete"/>, which runs immediately, and <c>await</c>,
+/// which completes). Tweens are not reusable: start a fresh one in the desired
+/// direction instead of trying to revive a completed tween.
+/// </para>
 /// </summary>
 public readonly partial struct Tween
 {
@@ -45,26 +52,33 @@ public readonly partial struct Tween
     /// <summary>
     /// Raised when a tween callback (OnComplete, OnUpdate, continuation) throws;
     /// the exception is otherwise swallowed so one bad callback can't break the
-    /// frame loop.
+    /// ticker.
     /// </summary>
     public static event Action<Exception>? UnhandledException;
 
     private readonly TweenInstance? _instance;
+    private readonly int _version;
 
     internal Tween(TweenInstance? instance)
     {
         _instance = instance;
+        _version = instance?.Version ?? 0;
     }
+
+    /// <summary>
+    /// True while the handle still points at the live tween it was created from.
+    /// </summary>
+    private bool IsCurrent => _instance is { } instance && instance.Version == _version;
 
     /// <summary>
     /// True while the tween is still running (or paused) in the engine.
     /// </summary>
-    public bool IsAlive => _instance is { IsAlive: true };
+    public bool IsAlive => _instance is { IsAlive: true } instance && instance.Version == _version;
 
     /// <summary>
-    /// The tween's total duration (excluding delay), or zero if the handle is empty.
+    /// The tween's total duration (excluding delay), or zero if the handle is stale.
     /// </summary>
-    public TimeSpan Duration => _instance?.Duration ?? TimeSpan.Zero;
+    public TimeSpan Duration => IsCurrent ? _instance!.Duration : TimeSpan.Zero;
 
     /// <summary>
     /// Active (post-delay) elapsed time. Settable to scrub the animation forward
@@ -72,12 +86,12 @@ public readonly partial struct Tween
     /// </summary>
     public TimeSpan ElapsedTime
     {
-        get => _instance?.ElapsedTime ?? TimeSpan.Zero;
+        get => IsCurrent ? _instance!.ElapsedTime : TimeSpan.Zero;
         set
         {
-            if (_instance is { } instance)
+            if (IsCurrent)
             {
-                instance.ElapsedTime = value;
+                _instance!.ElapsedTime = value;
             }
         }
     }
@@ -87,32 +101,53 @@ public readonly partial struct Tween
     /// </summary>
     public double Progress
     {
-        get => _instance?.Progress ?? 0;
+        get => IsCurrent ? _instance!.Progress : 0;
         set
         {
-            if (_instance is { } instance)
+            if (IsCurrent)
             {
-                instance.Progress = value;
+                _instance!.Progress = value;
             }
         }
     }
 
     /// <summary>
     /// Registers a callback invoked exactly once when the tween finishes naturally.
-    /// If the tween already completed, the callback runs immediately. Stopped or
-    /// superseded tweens never fire it.
+    /// If the tween already completed, the callback runs immediately. Stopped,
+    /// canceled or superseded tweens never fire it.
     /// </summary>
     public Tween OnComplete(Action onComplete)
     {
         ArgumentNullException.ThrowIfNull(onComplete);
 
-        if (_instance is { } instance)
+        if (_instance is { } instance && instance.Version == _version)
         {
             instance.SetOnComplete(onComplete);
         }
         else
         {
             onComplete();
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a target-based completion callback, invoked exactly once when the
+    /// tween finishes naturally. Write the callback as a static lambda to keep it
+    /// allocation-free: <c>tween.OnComplete(target: this, static t => t.Commit())</c>.
+    /// </summary>
+    public Tween OnComplete<TTarget>(TTarget target, Action<TTarget> onComplete) where TTarget : class
+    {
+        ArgumentNullException.ThrowIfNull(onComplete);
+
+        if (_instance is { } instance && instance.Version == _version)
+        {
+            instance.SetOnComplete(target, CallbackCache.WrapComplete(target, onComplete));
+        }
+        else
+        {
+            onComplete(target);
         }
 
         return this;
@@ -126,52 +161,108 @@ public readonly partial struct Tween
     public Tween OnUpdate(Action<double> onUpdate)
     {
         ArgumentNullException.ThrowIfNull(onUpdate);
-        _instance?.SetOnUpdate(onUpdate);
+        if (IsCurrent)
+        {
+            _instance!.SetOnUpdate(onUpdate);
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a target-based per-frame callback (zero-alloc with a static lambda).
+    /// </summary>
+    public Tween OnUpdate<TTarget>(TTarget target, Action<TTarget, double> onUpdate) where TTarget : class
+    {
+        ArgumentNullException.ThrowIfNull(onUpdate);
+        if (IsCurrent)
+        {
+            _instance!.SetOnUpdate(target, CallbackCache.WrapUpdate(target, onUpdate));
+        }
+
         return this;
     }
 
     /// <summary>
     /// Stops the tween as soon as <paramref name="token"/> is canceled, leaving
-    /// the animated value where it is. If the tween is awaited, the await throws
-    /// <see cref="OperationCanceledException"/>.
+    /// the animated value where it is. The token is polled on each tick (no
+    /// allocation); cancellation applies within one frame. If the tween is
+    /// awaited, the await throws <see cref="OperationCanceledException"/>.
     /// </summary>
     public Tween CancelOn(CancellationToken token)
     {
-        _instance?.SetCancellationToken(token);
+        if (IsCurrent)
+        {
+            _instance!.SetCancellationToken(token);
+        }
+
         return this;
     }
 
     /// <summary>
     /// Stops the tween, leaving the animated value where it is.
     /// </summary>
-    public void Stop() => _instance?.Stop();
+    public void Stop()
+    {
+        if (IsCurrent)
+        {
+            _instance!.Stop();
+        }
+    }
 
     /// <summary>
     /// Stops the tween and snaps the animated value to the end value.
     /// </summary>
-    public void Complete() => _instance?.Complete();
+    public void Complete()
+    {
+        if (IsCurrent)
+        {
+            _instance!.Complete();
+        }
+    }
 
     /// <summary>
     /// Pauses the tween; elapsed time is frozen until <see cref="Resume"/> is called.
     /// </summary>
-    public void Pause() => _instance?.Pause();
+    public void Pause()
+    {
+        if (IsCurrent)
+        {
+            _instance!.Pause();
+        }
+    }
 
     /// <summary>
     /// Resumes a paused tween from where it left off.
     /// </summary>
-    public void Resume() => _instance?.Resume();
+    public void Resume()
+    {
+        if (IsCurrent)
+        {
+            _instance!.Resume();
+        }
+    }
 
     /// <summary>
-    /// Restarts the tween from the beginning.
+    /// Restarts a still-alive tween from the beginning. Completed tweens are
+    /// pooled and cannot be revived — start a fresh tween instead.
     /// </summary>
-    public void Start() => _instance?.Restart();
+    public void Start()
+    {
+        if (IsCurrent)
+        {
+            _instance!.Restart();
+        }
+    }
 
     /// <summary>
     /// Awaits the tween: resumes when it completes naturally, is stopped,
     /// completed, canceled or superseded. Cancellation surfaces as
-    /// <see cref="OperationCanceledException"/>. No threads are used.
+    /// <see cref="OperationCanceledException"/>. No threads are used; the
+    /// awaiter itself is a struct, so awaiting allocates only the async state
+    /// machine.
     /// </summary>
-    public TweenAwaiter GetAwaiter() => new(_instance);
+    public TweenAwaiter GetAwaiter() => new(_instance, _version);
 
     /// <summary>
     /// Animates a typed property of <paramref name="target"/> to <paramref name="to"/>,
@@ -198,7 +289,7 @@ public readonly partial struct Tween
             DirectPropertyBase<T> direct => target.GetValue(direct),
             _ => (T)target.GetValue(property)!,
         };
-        return Start(new TweenInstance<T>(
+        return Start(TweenInstance<T>.Acquire(
             TweenEngine.Instance, target, property, from, to, duration, delay, easing ?? DefaultEasing, null));
     }
 
@@ -251,6 +342,46 @@ public readonly partial struct Tween
         => StartCustom(from, to, onValueChange, duration, easing, delay, target);
 
     /// <summary>
+    /// Animates a raw value, invoking a target-based <paramref name="onValueChange"/>
+    /// on every update. Write the callback as a static lambda
+    /// (<c>static (vm, v) =&gt; vm.ArtOpacity = v</c>) to keep it allocation-free.
+    /// </summary>
+    public static Tween Custom<TTarget>(TTarget target, double from, double to, Action<TTarget, double> onValueChange,
+        double duration = 1, IEasing? easing = null, double delay = 0) where TTarget : class
+        => Custom(target, from, to, onValueChange, Seconds(duration, nameof(duration)), easing,
+            SecondsOrZero(delay, nameof(delay)));
+
+    /// <summary>
+    /// Animates a raw value, invoking a target-based <paramref name="onValueChange"/>
+    /// on every update (zero-alloc with a static lambda).
+    /// </summary>
+    public static Tween Custom<TTarget>(TTarget target, double from, double to, Action<TTarget, double> onValueChange,
+        TimeSpan duration, IEasing? easing = null, TimeSpan delay = default) where TTarget : class
+        => StartTargetCustom(target, from, to, onValueChange, duration, easing, delay);
+
+    /// <summary>
+    /// Animates a raw typed value, invoking a target-based <paramref name="onValueChange"/>
+    /// on every update. Supported value types: double, float, int, Color, Point,
+    /// Vector, Thickness, Rect. Write the callback as a static lambda
+    /// (<c>static (vm, v) =&gt; vm.ArtOpacity = v</c>) to keep it allocation-free.
+    /// </summary>
+    public static Tween Custom<TTarget, TValue>(TTarget target, TValue from, TValue to,
+        Action<TTarget, TValue> onValueChange, double duration = 1, IEasing? easing = null, double delay = 0)
+        where TTarget : class
+        => Custom(target, from, to, onValueChange, Seconds(duration, nameof(duration)), easing,
+            SecondsOrZero(delay, nameof(delay)));
+
+    /// <summary>
+    /// Animates a raw typed value, invoking a target-based <paramref name="onValueChange"/>
+    /// on every update (zero-alloc with a static lambda). Supported value types:
+    /// double, float, int, Color, Point, Vector, Thickness, Rect.
+    /// </summary>
+    public static Tween Custom<TTarget, TValue>(TTarget target, TValue from, TValue to,
+        Action<TTarget, TValue> onValueChange, TimeSpan duration, IEasing? easing = null, TimeSpan delay = default)
+        where TTarget : class
+        => StartTargetCustom(target, from, to, onValueChange, duration, easing, delay);
+
+    /// <summary>
     /// A tween that does nothing but wait; <paramref name="onComplete"/> fires when
     /// the delay elapses. Usable with <c>await</c> as a UI-thread sleep. Pass
     /// <paramref name="target"/> so <see cref="StopAll(AvaloniaObject)"/> cancels the
@@ -279,7 +410,7 @@ public readonly partial struct Tween
             throw new ArgumentOutOfRangeException(nameof(duration), "Delay duration must be positive.");
         }
 
-        Tween tween = Start(new TweenInstance<double>(
+        Tween tween = Start(TweenInstance<double>.Acquire(
             TweenEngine.Instance, target, target != null ? CustomSentinel : null, 0d, 0d, duration, default, Linear, null));
         if (onComplete != null)
         {
@@ -338,9 +469,19 @@ public readonly partial struct Tween
         TimeSpan delay, AvaloniaObject? target)
     {
         ArgumentNullException.ThrowIfNull(onValueChange);
-        return Start(new TweenInstance<T>(
+        return Start(TweenInstance<T>.Acquire(
             TweenEngine.Instance, target, target != null ? CustomSentinel : null, from, to, duration, delay,
             easing ?? DefaultEasing, onValueChange));
+    }
+
+    private static Tween StartTargetCustom<TTarget, TValue>(TTarget target, TValue from, TValue to,
+        Action<TTarget, TValue> onValueChange, TimeSpan duration, IEasing? easing, TimeSpan delay) where TTarget : class
+    {
+        ArgumentNullException.ThrowIfNull(onValueChange);
+        TweenInstance<TValue> instance = TweenInstance<TValue>.Acquire(
+            TweenEngine.Instance, null, null, from, to, duration, delay, easing ?? DefaultEasing, null);
+        instance.SetValueChange(target, CallbackCache.WrapValue(target, onValueChange));
+        return Start(instance);
     }
 
     private static TimeSpan Seconds(double value, string name)

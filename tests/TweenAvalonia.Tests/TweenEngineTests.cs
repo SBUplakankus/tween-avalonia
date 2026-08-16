@@ -163,7 +163,7 @@ public class TweenEngineTests
     }
 
     [Test]
-    public void Start_AfterCompletion_RunsAgain()
+    public void Start_AfterCompletion_IsNoOp()
     {
         var target = new TestTarget();
         Tween tween = Tween.To(target, TestTarget.ValueProperty, 10, Duration, Linear);
@@ -172,12 +172,9 @@ public class TweenEngineTests
         Assert.That(tween.IsAlive, Is.False);
 
         tween.Start();
-        Assert.That(tween.IsAlive, Is.True);
+        Assert.That(tween.IsAlive, Is.False, "Completed tweens are pooled and cannot be revived");
 
-        TweenEngine.Instance.Update(TimeSpan.FromMilliseconds(50));
-        Assert.That(target.Value, Is.EqualTo(5).Within(1e-9));
-
-        TweenEngine.Instance.Update(TimeSpan.FromMilliseconds(50));
+        TweenEngine.Instance.Update(TimeSpan.FromMilliseconds(100));
         Assert.That(target.Value, Is.EqualTo(10).Within(1e-9));
     }
 

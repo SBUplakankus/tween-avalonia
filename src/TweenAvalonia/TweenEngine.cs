@@ -1,15 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Avalonia.Controls;
 using Avalonia.Threading;
 
 namespace TweenAvalonia;
 
 /// <summary>
-/// Shared per-frame ticker that drives every running tween: one loop for all
-/// tweens instead of one timer per animation. Ticks once per rendered frame
-/// when attached to a top-level, otherwise falls back to a 60 Hz dispatcher timer.
+/// Shared ticker that drives every running tween: one loop for all tweens
+/// instead of one timer per animation. Ticks on the UI thread at ~60 Hz via a
+/// dispatcher timer at Render priority and sleeps (no timer, no allocations)
+/// while nothing animates. Zero configuration: the engine starts and stops
+/// itself as tweens come and go.
 /// </summary>
 public sealed class TweenEngine
 {
@@ -19,24 +20,24 @@ public sealed class TweenEngine
     public static TweenEngine Instance { get; } = new();
 
     /// <summary>
-    /// Longest allowed frame delta; larger gaps (stalls, debugger breaks) are
+    /// Longest allowed tick delta; larger gaps (stalls, debugger breaks) are
     /// clamped so tweens never jump wildly.
     /// </summary>
     private static readonly TimeSpan MaxFrameDelta = TimeSpan.FromMilliseconds(100);
 
-    private static readonly TimeSpan FallbackInterval = TimeSpan.FromMilliseconds(16);
+    /// <summary>
+    /// Tick interval of the shared dispatcher timer.
+    /// </summary>
+    private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(16);
 
     private readonly List<TweenInstance> _tweens = [];
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
-    private readonly Action<TimeSpan> _onAnimationFrame;
-    private TopLevel? _topLevel;
-    private DispatcherTimer? _fallbackTimer;
-    private TimeSpan _lastFrameTime;
+    private DispatcherTimer? _timer;
+    private TimeSpan _lastTickTime;
     private bool _pumping;
-    private bool _firstFrame;
 
     /// <summary>
-    /// Disables the automatic frame pump (unit tests drive <see cref="Update"/> manually).
+    /// Disables the automatic ticker (unit tests drive <see cref="Update"/> manually).
     /// </summary>
     internal bool AutoPumpEnabled = true;
 
@@ -52,28 +53,11 @@ public sealed class TweenEngine
 
     private TweenEngine()
     {
-        // Cached so the per-frame RequestAnimationFrame call doesn't allocate a delegate
-        _onAnimationFrame = OnAnimationFrame;
-    }
-
-    /// <summary>
-    /// Binds the engine to a top-level so tweens tick once per rendered frame.
-    /// Called by windows at startup; without a top-level, tweens fall back to a
-    /// 60 Hz dispatcher timer.
-    /// </summary>
-    public void Attach(TopLevel topLevel)
-    {
-        _topLevel = topLevel ?? throw new ArgumentNullException(nameof(topLevel));
-        if (_pumping)
-        {
-            StopPump();
-            EnsurePumping();
-        }
     }
 
     /// <summary>
     /// Advances every active tween by the given time. Called automatically from
-    /// the frame pump; public so tests (and any custom pump) can drive it.
+    /// the ticker; public so tests (and any custom pump) can drive it.
     /// </summary>
     public void Update(TimeSpan delta)
     {
@@ -99,6 +83,7 @@ public sealed class TweenEngine
             {
                 _tweens.RemoveAt(i);
                 Tween.UnregisterIfCurrent(tween);
+                tween.ReleaseToPool();
             }
         }
 
@@ -124,6 +109,7 @@ public sealed class TweenEngine
         if (_tweens.Remove(instance))
         {
             Tween.UnregisterIfCurrent(instance);
+            instance.ReleaseToPool();
             if (_tweens.Count == 0)
             {
                 StopPump();
@@ -136,9 +122,9 @@ public sealed class TweenEngine
     /// </summary>
     public void StopAll()
     {
-        foreach (TweenInstance tween in _tweens.ToArray())
+        for (int i = _tweens.Count - 1; i >= 0; i--)
         {
-            tween.Stop();
+            _tweens[i].Stop();
         }
     }
 
@@ -150,49 +136,12 @@ public sealed class TweenEngine
         }
 
         _pumping = true;
-        _firstFrame = true;
-        _lastFrameTime = _stopwatch.Elapsed;
-
-        if (_topLevel != null)
-        {
-            _topLevel.RequestAnimationFrame(_onAnimationFrame);
-        }
-        else
-        {
-            _fallbackTimer ??= new DispatcherTimer(FallbackInterval, DispatcherPriority.Render, (_, _) => OnFallbackTick());
-            _fallbackTimer.Start();
-        }
+        _lastTickTime = _stopwatch.Elapsed;
+        _timer ??= new DispatcherTimer(TickInterval, DispatcherPriority.Render, (_, _) => OnTick());
+        _timer.Start();
     }
 
-    private void OnAnimationFrame(TimeSpan frameTime)
-    {
-        if (!_pumping)
-        {
-            return;
-        }
-
-        // The first frame's timestamp comes from a different epoch than the
-        // engine's stopwatch, so seed the baseline instead of computing a delta.
-        if (_firstFrame)
-        {
-            _firstFrame = false;
-            _lastFrameTime = frameTime;
-        }
-
-        Update(frameTime - _lastFrameTime);
-        _lastFrameTime = frameTime;
-
-        if (_tweens.Count > 0)
-        {
-            _topLevel!.RequestAnimationFrame(_onAnimationFrame);
-        }
-        else
-        {
-            _pumping = false;
-        }
-    }
-
-    private void OnFallbackTick()
+    private void OnTick()
     {
         if (!_pumping)
         {
@@ -200,8 +149,8 @@ public sealed class TweenEngine
         }
 
         TimeSpan now = _stopwatch.Elapsed;
-        Update(now - _lastFrameTime);
-        _lastFrameTime = now;
+        Update(now - _lastTickTime);
+        _lastTickTime = now;
 
         if (_tweens.Count == 0)
         {
@@ -212,6 +161,6 @@ public sealed class TweenEngine
     private void StopPump()
     {
         _pumping = false;
-        _fallbackTimer?.Stop();
+        _timer?.Stop();
     }
 }

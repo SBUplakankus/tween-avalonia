@@ -1,13 +1,16 @@
 using System;
 using Avalonia;
 using Avalonia.Animation.Easings;
-using Avalonia.Threading;
 
 namespace TweenAvalonia;
 
 /// <summary>
 /// A single running animation. Owned by <see cref="TweenEngine"/>; created via the
 /// <see cref="Tween"/> factory methods and controlled through the returned handle.
+/// Instances are pooled per value type: after the first few tweens of a type,
+/// starting and finishing tweens allocate nothing. A handle stores the instance
+/// plus its <see cref="Version"/>; when the instance is released to the pool the
+/// version is bumped, so stale handles can never touch the instance's next owner.
 /// </summary>
 internal abstract class TweenInstance
 {
@@ -21,9 +24,13 @@ internal abstract class TweenInstance
 
     private readonly TweenEngine _engine;
     private Action? _onComplete;
+    private object? _onCompleteTarget;
+    private Action<object?>? _onCompleteCallback;
     private Action<double>? _onUpdate;
-    private Action? _deathHook;
-    private CancellationTokenRegistration _cancelRegistration;
+    private object? _onUpdateTarget;
+    private Action<object?, double>? _onUpdateCallback;
+    private Action? _continuation;
+    private CancellationToken _cancellationToken;
 
     protected TimeSpan Elapsed;
     protected TimeSpan Delay;
@@ -43,6 +50,12 @@ internal abstract class TweenInstance
     /// True when the tween was stopped by a cancellation token.
     /// </summary>
     internal bool Canceled { get; private set; }
+
+    /// <summary>
+    /// Bumped every time the instance is released back to the pool, so handles
+    /// taken before the release can never control the instance's next owner.
+    /// </summary>
+    internal int Version { get; private set; }
 
     /// <summary>
     /// The object the tween writes to, or null for raw value and delay tweens.
@@ -109,6 +122,14 @@ internal abstract class TweenInstance
             return;
         }
 
+        if (_cancellationToken.IsCancellationRequested)
+        {
+            Canceled = true;
+            CurrentState = State.Stopped;
+            RunContinuation(TakeContinuation());
+            return;
+        }
+
         Elapsed += delta;
         if (Elapsed < Delay)
         {
@@ -120,30 +141,51 @@ internal abstract class TweenInstance
         {
             WriteEndValue();
             _onUpdate?.Invoke(1.0);
+            _onUpdateCallback?.Invoke(_onUpdateTarget!, 1.0);
             CurrentState = State.Completed;
             RunOnComplete();
-            FireDeathHook();
+            RunContinuation(TakeContinuation());
         }
         else
         {
             double factor = WriteCurrentValue(active);
             _onUpdate?.Invoke(factor);
+            _onUpdateCallback?.Invoke(_onUpdateTarget!, factor);
         }
     }
 
     /// <summary>
     /// Stores the completion callback; invoked exactly once when the tween finishes
-    /// naturally. If the tween already completed, the callback runs immediately.
+    /// naturally. If the tween is no longer alive, the callback runs immediately.
     /// </summary>
     internal void SetOnComplete(Action onComplete)
     {
-        if (CurrentState == State.Completed)
+        if (!IsAlive)
         {
             onComplete();
             return;
         }
 
         _onComplete = onComplete;
+        _onCompleteCallback = null;
+        _onCompleteTarget = null;
+    }
+
+    /// <summary>
+    /// Stores a target-based completion callback (zero-alloc with static lambdas);
+    /// invoked exactly once when the tween finishes naturally.
+    /// </summary>
+    internal void SetOnComplete(object target, Action<object?> onComplete)
+    {
+        if (!IsAlive)
+        {
+            onComplete(target);
+            return;
+        }
+
+        _onCompleteCallback = onComplete;
+        _onCompleteTarget = target;
+        _onComplete = null;
     }
 
     /// <summary>
@@ -153,23 +195,49 @@ internal abstract class TweenInstance
     internal void SetOnUpdate(Action<double> onUpdate)
     {
         _onUpdate = onUpdate;
+        _onUpdateCallback = null;
+        _onUpdateTarget = null;
     }
 
     /// <summary>
-    /// Registers a hook invoked when the tween dies for any reason (natural
-    /// completion, stop, complete, cancellation, superseding). Used by the awaiter
-    /// so awaiting a tween never hangs. If the tween is already dead, the hook runs
-    /// immediately.
+    /// Stores a target-based per-frame update callback (zero-alloc with static lambdas).
     /// </summary>
-    internal void AttachDeathHook(Action hook)
+    internal void SetOnUpdate(object target, Action<object?, double> onUpdate)
+    {
+        _onUpdateCallback = onUpdate;
+        _onUpdateTarget = target;
+        _onUpdate = null;
+    }
+
+    /// <summary>
+    /// Stores the await continuation; runs when the tween dies for any reason
+    /// (completion, stop, complete, cancellation, superseding), so awaiting never
+    /// hangs. If the tween is already dead, runs immediately.
+    /// </summary>
+    internal void SetContinuation(Action continuation)
     {
         if (!IsAlive)
         {
-            hook();
+            continuation();
             return;
         }
 
-        _deathHook = hook;
+        _continuation = continuation;
+    }
+
+    /// <summary>
+    /// Stops the tween as soon as the token is canceled, leaving the animated
+    /// value where it is. The token is polled on each tick (no registration, so
+    /// no allocation); an already-canceled token stops the tween immediately.
+    /// If the tween is awaited, the await throws <see cref="OperationCanceledException"/>.
+    /// </summary>
+    internal void SetCancellationToken(CancellationToken token)
+    {
+        _cancellationToken = token;
+        if (token.IsCancellationRequested)
+        {
+            Cancel();
+        }
     }
 
     /// <summary>
@@ -182,9 +250,10 @@ internal abstract class TweenInstance
             return;
         }
 
+        Action? continuation = TakeContinuation();
         CurrentState = State.Stopped;
         _engine.Remove(this);
-        FireDeathHook();
+        RunContinuation(continuation);
     }
 
     /// <summary>
@@ -197,10 +266,11 @@ internal abstract class TweenInstance
             return;
         }
 
+        Action? continuation = TakeContinuation();
         WriteEndValue();
         CurrentState = State.Completed;
         _engine.Remove(this);
-        FireDeathHook();
+        RunContinuation(continuation);
     }
 
     /// <summary>
@@ -226,50 +296,48 @@ internal abstract class TweenInstance
     }
 
     /// <summary>
-    /// Restarts the tween from the beginning, re-registering it with the engine
-    /// and superseding any newer tween on the same target property.
+    /// Restarts a live tween from the beginning, re-registering it with the
+    /// engine and superseding any newer tween on the same target property.
+    /// Completed tweens are pooled and cannot be revived.
     /// </summary>
     internal void Restart()
     {
+        if (!IsAlive)
+        {
+            return;
+        }
+
         Elapsed = default;
         CurrentState = State.Running;
         _engine.Add(this);
     }
 
     /// <summary>
-    /// Stops the tween as soon as the token is canceled. If the tween is awaited,
-    /// the await throws <see cref="OperationCanceledException"/>.
+    /// Clears every callback and timestamp, bumps the version (invalidating all
+    /// outstanding handles) and returns the instance to the pool.
     /// </summary>
-    internal void SetCancellationToken(CancellationToken token)
+    internal virtual void ReleaseToPool()
     {
-        if (token.IsCancellationRequested)
-        {
-            Cancel();
-            return;
-        }
-
-        _cancelRegistration = token.Register(OnCancelToken);
+        Version++;
+        _onComplete = null;
+        _onCompleteTarget = null;
+        _onCompleteCallback = null;
+        _onUpdate = null;
+        _onUpdateTarget = null;
+        _onUpdateCallback = null;
+        _continuation = null;
+        _cancellationToken = default;
+        Canceled = false;
+        Elapsed = default;
+        Delay = default;
+        CurrentState = State.Running;
     }
 
-    private void OnCancelToken()
-    {
-        try
-        {
-            Dispatcher dispatcher = Dispatcher.UIThread;
-            if (!dispatcher.CheckAccess())
-            {
-                dispatcher.Post(Cancel, DispatcherPriority.Render);
-                return;
-            }
-        }
-        catch
-        {
-            // No UI dispatcher available (e.g. headless tests): cancel inline.
-        }
-
-        Cancel();
-    }
-
+    /// <summary>
+    /// Immediate cancellation path (already-canceled token at
+    /// <see cref="SetCancellationToken"/> time). The tween is removed from the
+    /// engine and the await continuation runs.
+    /// </summary>
     private void Cancel()
     {
         if (!IsAlive)
@@ -277,17 +345,25 @@ internal abstract class TweenInstance
             return;
         }
 
+        Action? continuation = TakeContinuation();
         Canceled = true;
-        Stop();
+        CurrentState = State.Stopped;
+        _engine.Remove(this);
+        RunContinuation(continuation);
     }
 
-    private void FireDeathHook()
+    private Action? TakeContinuation()
     {
-        Action? hook = _deathHook;
-        _deathHook = null;
+        Action? continuation = _continuation;
+        _continuation = null;
+        return continuation;
+    }
+
+    private static void RunContinuation(Action? continuation)
+    {
         try
         {
-            hook?.Invoke();
+            continuation?.Invoke();
         }
         catch (Exception ex)
         {
@@ -297,16 +373,10 @@ internal abstract class TweenInstance
 
     private void RunOnComplete()
     {
-        if (_onComplete == null)
-        {
-            return;
-        }
-
-        Action callback = _onComplete;
-        _onComplete = null;
         try
         {
-            callback();
+            _onComplete?.Invoke();
+            _onCompleteCallback?.Invoke(_onCompleteTarget!);
         }
         catch (Exception ex)
         {
@@ -318,19 +388,44 @@ internal abstract class TweenInstance
 /// <summary>
 /// A single typed running animation: holds the from/to values and writes the
 /// interpolated value to a target property or a callback. Generic so per-frame
-/// writes stay unboxed for every supported value type.
+/// writes stay unboxed for every supported value type. Instances are pooled in
+/// a static per-type free list.
 /// </summary>
 internal sealed class TweenInstance<T> : TweenInstance
 {
-    private readonly AvaloniaObject? _target;
-    private readonly AvaloniaProperty? _property;
-    private readonly T _from;
-    private readonly T _to;
-    private readonly TimeSpan _duration;
-    private readonly IEasing _easing;
-    private readonly Action<T>? _onValueChange;
+    private static TweenInstance<T>? _poolHead;
 
-    internal TweenInstance(
+    private readonly TweenEngine _engine;
+    private AvaloniaObject? _target;
+    private AvaloniaProperty? _property;
+    private T _from;
+    private T _to;
+    private TimeSpan _duration;
+    private IEasing _easing;
+    private Action<T>? _onValueChange;
+    private object? _onValueTarget;
+    private Action<object?, T>? _onValueCallback;
+    private TweenInstance<T>? _poolNext;
+
+    internal override AvaloniaObject? Target => _target;
+
+    internal override AvaloniaProperty? Property => _property;
+
+    internal override TimeSpan Duration => _duration;
+
+    private TweenInstance(TweenEngine engine) : base(engine)
+    {
+        _engine = engine;
+        _from = default!;
+        _to = default!;
+        _easing = null!;
+    }
+
+    /// <summary>
+    /// Takes an instance from the pool (or allocates one) and configures it for
+    /// the given tween. Validation is performed here so pooled reuse skips nothing.
+    /// </summary>
+    internal static TweenInstance<T> Acquire(
         TweenEngine engine,
         AvaloniaObject? target,
         AvaloniaProperty? property,
@@ -340,29 +435,47 @@ internal sealed class TweenInstance<T> : TweenInstance
         TimeSpan delay,
         IEasing easing,
         Action<T>? onValueChange)
-        : base(engine)
     {
         if (duration <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(duration), "Tween duration must be positive.");
         }
 
-        _ = Interpolator<T>.Value; // Fail fast for unsupported value types.
-        _target = target;
-        _property = property;
-        _from = from;
-        _to = to;
-        _duration = duration;
-        Delay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
-        _easing = easing;
-        _onValueChange = onValueChange;
+        _ = Interpolator<T>.Value;
+
+        TweenInstance<T>? instance = _poolHead;
+        if (instance != null)
+        {
+            _poolHead = instance._poolNext;
+            instance._poolNext = null;
+        }
+        else
+        {
+            instance = new TweenInstance<T>(engine);
+        }
+
+        instance._target = target;
+        instance._property = property;
+        instance._from = from;
+        instance._to = to;
+        instance._duration = duration;
+        instance.Delay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
+        instance._easing = easing;
+        instance._onValueChange = onValueChange;
+        instance._onValueTarget = null;
+        instance._onValueCallback = null;
+        return instance;
     }
 
-    internal override AvaloniaObject? Target => _target;
-
-    internal override AvaloniaProperty? Property => _property;
-
-    internal override TimeSpan Duration => _duration;
+    /// <summary>
+    /// Stores a target-based value writer (zero-alloc with static lambdas).
+    /// </summary>
+    internal void SetValueChange(object target, Action<object?, T> onValueChange)
+    {
+        _onValueCallback = onValueChange;
+        _onValueTarget = target;
+        _onValueChange = null;
+    }
 
     internal override double WriteCurrentValue(TimeSpan activeElapsed)
     {
@@ -374,6 +487,22 @@ internal sealed class TweenInstance<T> : TweenInstance
 
     internal override void WriteEndValue() => WriteValue(_to);
 
+    internal override void ReleaseToPool()
+    {
+        base.ReleaseToPool();
+        _target = null;
+        _property = null;
+        _from = default!;
+        _to = default!;
+        _duration = default;
+        _easing = null!;
+        _onValueChange = null;
+        _onValueTarget = null;
+        _onValueCallback = null;
+        _poolNext = _poolHead;
+        _poolHead = this;
+    }
+
     private void WriteValue(T value)
     {
         if (_onValueChange != null)
@@ -382,12 +511,17 @@ internal sealed class TweenInstance<T> : TweenInstance
             return;
         }
 
+        if (_onValueCallback != null)
+        {
+            _onValueCallback(_onValueTarget!, value);
+            return;
+        }
+
         if (_target is not { } target || _property is not { } property)
         {
             return;
         }
 
-        // Target-keyed Custom/Delay tweens use a sentinel key, never a real write.
         if (ReferenceEquals(property, Tween.CustomSentinel))
         {
             return;

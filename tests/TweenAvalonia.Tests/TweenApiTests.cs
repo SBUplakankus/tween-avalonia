@@ -417,7 +417,9 @@ public class TweenApiTests
 
         TweenEngine.Instance.Update(TimeSpan.FromMilliseconds(50));
         cts.Cancel();
+        Assert.That(tween.IsAlive, Is.True, "Cancellation applies on the next tick");
 
+        TweenEngine.Instance.Update(TimeSpan.Zero);
         Assert.That(tween.IsAlive, Is.False);
         Assert.That(target.GetValue(TypedTarget.ValueProperty), Is.EqualTo(5).Within(1e-9));
 
@@ -447,6 +449,7 @@ public class TweenApiTests
         Task completion = WaitFor(tween);
 
         cts.Cancel();
+        TweenEngine.Instance.Update(TimeSpan.Zero);
 
         Assert.ThrowsAsync<OperationCanceledException>(() => completion);
         Assert.That(tween.IsAlive, Is.False);

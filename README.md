@@ -26,21 +26,6 @@ Tween.To(transform, TranslateTransform.XProperty, 120);
 Tween.Custom(0, 1, v => progressText.Text = $"{v:P0}");
 ```
 
-## Target-keyed raw tweens — no stored handles
-
-`Custom` and `Delay` accept a `target:` — the raw tween joins the same latest-wins lifecycle as property tweens: a new tween with the same target supersedes the previous one, and `StopAll`/`CompleteAll` cover it. No `Tween _field` + `.Stop()` bookkeeping:
-
-```csharp
-// Only one art fade ever runs; no stored handle needed
-Tween.Custom(this, ArtOpacity, 0, v => ArtOpacity = v, 0.3, target: this);
-Artwork = newArt; ArtOpacity = 0;
-Tween.Custom(this, ArtOpacity, 1, v => ArtOpacity = v, 0.3, target: this);
-
-// Cancel a pending delayed action when leaving the screen
-Tween.Delay(2.0, () => ShowToast(), target: this);
-Tween.StopAll(this);   // on navigation: pending delay never fires
-```
-
 ## One line, done
 
 Tween factories follow PrimeTween's shape: only `(target, to)` required, everything else optional with defaults — duration `1s`, `Tween.DefaultEasing` (SineEaseInOut), no delay.
@@ -78,15 +63,41 @@ Every factory returns a `Tween` handle — keep it in a variable to control the 
 | `Stop()` | Stops the tween, leaving the animated value where it is. No `OnComplete`. |
 | `Complete()` | Stops the tween and snaps the value to the end value. No `OnComplete`. |
 | `Pause()` / `Resume()` | Freezes / continues the tween; elapsed time is preserved. |
-| `Start()` | Restarts the tween from the beginning (works after completion too). |
+| `Start()` | Restarts a still-running tween from the beginning. Completed tweens are pooled and not reusable — start a fresh one instead. |
 | `OnComplete(Action)` | Invoked exactly once on natural completion; runs immediately if the tween already completed. |
 | `OnUpdate(Action<double>)` | Invoked after every value write with the eased factor (0→1). |
 | `ElapsedTime` / `Progress` | Readable and settable — scrub an animation forward or backward. |
-| `CancelOn(CancellationToken)` | Stops the tween when the token cancels. |
+| `CancelOn(CancellationToken)` | Stops the tween when the token cancels (polled each tick, within a frame). |
 | `await` | `await Tween.Opacity(...)` resumes when the tween dies; cancellation throws `OperationCanceledException`. |
 | `IsAlive` | True while the tween is running or paused in the engine. |
 
+A handle is a struct wrapping a pooled instance plus a version: once the tween dies, stale handles become inert — `Stop`/`Pause`/`Start`/`Progress` are no-ops, `OnComplete` runs immediately, `await` completes.
+
 `Tween.Custom` / `Tween.Delay` accept an optional `target:` to opt into the same lifecycle (see below).
+
+## Target-keyed raw tweens — no stored handles
+
+`Custom` and `Delay` accept a `target:` — the raw tween joins the same latest-wins lifecycle as property tweens: a new tween with the same target supersedes the previous one, and `StopAll`/`CompleteAll` cover it. No `Tween _field` + `.Stop()` bookkeeping:
+
+```csharp
+Tween.Custom(this, ArtOpacity, 0, v => ArtOpacity = v, 0.3, target: this);
+Artwork = newArt;
+ArtOpacity = 0;
+Tween.Custom(this, ArtOpacity, 1, v => ArtOpacity = v, 0.3, target: this);
+
+Tween.Delay(2.0, () => ShowToast(), target: this);
+Tween.StopAll(this);   // on navigation: pending delay never fires
+```
+
+## Zero-allocation callbacks
+
+Closure callbacks (`() => ...`) allocate a delegate per call. For allocation-free callbacks, pass the target and use a **static lambda** — the callback is cached per call site after its first use:
+
+```csharp
+tween.OnComplete(target: this, static t => t.Commit());
+tween.OnUpdate(target: this, static (t, f) => t.HandleFactor(f));
+Tween.Custom(this, ArtOpacity, 0, static (vm, v) => vm.ArtOpacity = v, 0.3);
+```
 
 Group control by target — handy when navigating away from a page:
 
@@ -106,47 +117,30 @@ Tween.Opacity(visual, 0.5, 0.2);   // stops the first — no bookkeeping
 
 `double`, `float`, `int`, `Color`, `Point`, `Vector`, `Thickness`, `Rect` — for properties (`Tween.To<T>` / `Tween.Color` / `Tween.Margin` / ...) and raw values (`Tween.Custom<T>`). Unsupported types throw `NotSupportedException` at creation, not mid-animation.
 
-## The engine
+## Documentation
 
-`TweenEngine.Instance` is one shared per-frame loop driving every tween — no per-animation timers.
-
-- **Ticks once per rendered frame** via `TopLevel.RequestAnimationFrame` when attached to a window: `TweenEngine.Instance.Attach(window)` in your main window's constructor.
-- Falls back to a 60 Hz `DispatcherTimer` when no top-level is attached.
-- **Idle when nothing animates** — the loop sleeps and allocates nothing.
-- Frame deltas are clamped (100ms) so a stall or debugger break never makes tweens jump.
-- `TweenEngine.Instance.ActiveCount` / `MaxActiveCount` for debugging; `StopAll()` to stop everything.
-- `Tween.UnhandledException` fires when a callback throws (callbacks are otherwise swallowed so one bad callback can't break the frame loop).
-
-## Performance
-
-- **~0 allocations per frame** while animating, for every supported type (guarded by tests: 5,000 ticks < 1 KB; values are written via generic `SetValue` overloads and cached per-type interpolators, no boxing).
-- A handful of allocations per tween start (the instance + your call-site closures). This is a desktop-app library, not a game engine: no pooling, no target-based callbacks.
+| Doc | What's in it |
+|---|---|
+| [Getting started](docs/GETTING-STARTED.md) | One-line usage, reusable settings, target-keyed raw tweens |
+| [API reference](docs/API.md) | Control surface, factories, value types, zero-alloc callbacks |
+| [Architecture](docs/ARCHITECTURE.md) | Engine, pooling, versioned handles, callbacks, cancellation, performance |
+| [Changelog](docs/CHANGELOG.md) | Release history |
+| [Contributing](docs/CONTRIBUTING.md) | Build/test commands, code style, extension guides |
+| [License](docs/LICENSE.md) | GPL-3.0 |
 
 ## Requirements
 
-- .NET 8 or .NET 10, Avalonia 12.x (uses `TopLevel.RequestAnimationFrame` and the `IEasing` set from `Avalonia.Animation.Easings`).
+- .NET 8 or .NET 10, Avalonia 12.x (uses the `IEasing` set from `Avalonia.Animation.Easings`).
 
 ## Repository layout
 
 ```
-src/TweenAvalonia/          # the package (Tween, Tween.Factories, TweenInstance, TweenEngine, TweenSettings, TweenAwaiter, Interpolators)
-tests/TweenAvalonia.Tests/  # NUnit tests (50, incl. per-frame allocation guards)
+src/TweenAvalonia/          # the package (Tween, Tween.Factories, TweenInstance, TweenEngine, TweenSettings, TweenAwaiter, CallbackCache, Interpolators)
+tests/TweenAvalonia.Tests/  # NUnit tests (56, incl. per-frame and per-start allocation guards)
+docs/                       # documentation (see table above)
 assets/icon.png             # NuGet package icon (lucide "move-right", ISC)
-docs/
-    ROADMAP.md              # planned work
-    AVALONIA-ANIMATIONS-ANALYSIS.md   # what Avalonia's built-in animation system does
-    PRIMETWEEN-ANALYSIS.md            # what PrimeTween does (design inspiration)
-changelog.md                # release history
-```
-
-## Development
-
-```sh
-dotnet build TweenAvalonia.slnx     # net8.0 + net10.0
-dotnet test TweenAvalonia.slnx
-dotnet pack src/TweenAvalonia -c Release
 ```
 
 ## License
 
-GPL-3.0 (see [LICENSE](LICENSE)). Package icon adapted from the [lucide](https://lucide.dev) icon set (ISC license).
+GPL-3.0 (see [docs/LICENSE.md](docs/LICENSE.md)). Package icon adapted from the [lucide](https://lucide.dev) icon set (ISC license).

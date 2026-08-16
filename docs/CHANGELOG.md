@@ -2,6 +2,23 @@
 
 All notable changes to TweenAvalonia. Semver: 0.x until the API is validated by a real consumer, then 1.0.
 
+## 0.3.0 (unreleased)
+
+### Added
+- **Zero-alloc tween starts** — instances are pooled per value type; handles are versioned structs, so stale handles can never control a pooled instance's next owner (stale `Stop`/`Pause`/`Start`/`Progress` are no-ops, `OnComplete` runs immediately, `await` completes)
+- **Target-based callbacks** — `OnComplete(target, Action<TTarget>)`, `OnUpdate(target, Action<TTarget,double>)`, `Custom(target, from, to, Action<TTarget,TValue>, ...)` with static lambdas; wrappers are cached per call site, so callbacks allocate nothing after their first use
+- **Struct awaiter** — `await tween` allocates only the async state machine; the continuation is stored on the instance
+- **Polled cancellation** — `CancelOn` stores the token and checks it each tick (no registration allocation); cancellation applies within a frame; already-canceled tokens stop immediately
+
+### Changed
+- `Start()` is alive-only — completed tweens are pooled and cannot be revived (PrimeTween-style non-reusable model)
+- `TweenEngine.StopAll()` no longer snapshots the tween list (no allocation)
+
+## 0.2.1 (unreleased)
+
+### Changed
+- **Zero-configuration engine** — `TweenEngine.Attach(TopLevel)` removed; the shared ticker runs itself on a 60 Hz UI-thread dispatcher timer (Render priority) and sleeps while idle. No setup calls in app code.
+
 ## 0.2.0 (unreleased)
 
 ### Added
