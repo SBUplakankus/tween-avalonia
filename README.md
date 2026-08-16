@@ -121,12 +121,12 @@ Tween.Opacity(visual, 0.5, 0.2);   // stops the first — no bookkeeping
 
 | Doc | What's in it |
 |---|---|
-| [Getting started](docs/GETTING-STARTED.md) | One-line usage, reusable settings, target-keyed raw tweens |
-| [API reference](docs/API.md) | Control surface, factories, value types, zero-alloc callbacks |
-| [Architecture](docs/ARCHITECTURE.md) | Engine, pooling, versioned handles, callbacks, cancellation, performance |
-| [Changelog](docs/CHANGELOG.md) | Release history |
-| [Contributing](docs/CONTRIBUTING.md) | Build/test commands, code style, extension guides |
-| [License](docs/LICENSE.md) | GPL-3.0 |
+| [Getting started](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/GETTING-STARTED.md) | One-line usage, reusable settings, target-keyed raw tweens |
+| [API reference](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/API.md) | Control surface, factories, value types, zero-alloc callbacks |
+| [Architecture](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/ARCHITECTURE.md) | Engine, pooling, versioned handles, callbacks, cancellation, performance |
+| [Changelog](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/CHANGELOG.md) | Release history |
+| [Contributing](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/CONTRIBUTING.md) | Build/test commands, code style, extension guides |
+| [License](https://github.com/SBUplakankus/tween-avalonia/blob/main/docs/LICENSE.md) | GPL-3.0 |
 
 ## Requirements
 
