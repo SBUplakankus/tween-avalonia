@@ -36,8 +36,21 @@ jobs:
       - name: Pack
         run: dotnet pack src/TweenAvalonia/TweenAvalonia.csproj -c Release --no-build -o artifacts
 
-      - name: Publish to NuGet
-        uses: nuget/publish@v1
+      - name: Get NuGet token
+        id: nuget_token
+        uses: actions/github-script@v7
         with:
-          PACKAGE_PATH: artifacts/*.nupkg
-          NUGET_SOURCE_URL: https://api.nuget.org/v3/index.json
+          script: |
+            const idToken = await core.getIDToken('api.nuget.org');
+            const response = await fetch('https://api.nuget.org/v3/oidc/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: idToken, source: 'github-actions' }),
+            });
+            const data = await response.json();
+            core.setOutput('token', data.token);
+
+      - name: Publish to NuGet
+        env:
+          NUGET_AUTH_TOKEN: ${{ steps.nuget_token.outputs.token }}
+        run: dotnet nuget push artifacts/*.nupkg --source https://api.nuget.org/v3/index.json

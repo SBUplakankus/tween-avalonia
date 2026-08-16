@@ -1,6 +1,15 @@
+<div align="center">
+
 # TweenAvalonia
 
+![NuGet](https://img.shields.io/nuget/v/TweenAvalonia)
+![Downloads](https://img.shields.io/nuget/dt/TweenAvalonia)
+![CI](https://img.shields.io/github/actions/workflow/status/SBUplakankus/tween-avalonia/ci.yml)
+![License](https://img.shields.io/github/license/SBUplakankus/tween-avalonia)
+
 Programmatic, controllable tweens for Avalonia. Built because Avalonia's XAML `Transitions` are fire-and-forget: once a property change triggers a transition you can't stop it, complete it, chain to it, or get a completion callback. TweenAvalonia gives you a handle to every animation you start — and only the target and end value are required.
+
+</div>
 
 ```csharp
 using TweenAvalonia;
