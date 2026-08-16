@@ -36,21 +36,11 @@ jobs:
       - name: Pack
         run: dotnet pack src/TweenAvalonia/TweenAvalonia.csproj -c Release --no-build -o artifacts
 
-      - name: Get NuGet token
-        id: nuget_token
-        uses: actions/github-script@v7
+      - name: NuGet login (OIDC to temp API key)
+        uses: NuGet/login@v1
+        id: nuget_login
         with:
-          script: |
-            const idToken = await core.getIDToken('api.nuget.org');
-            const response = await fetch('https://api.nuget.org/v3/oidc/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ token: idToken, source: 'github-actions' }),
-            });
-            const data = await response.json();
-            core.setOutput('token', data.token);
+          user: SBUplakankus
 
       - name: Publish to NuGet
-        env:
-          NUGET_AUTH_TOKEN: ${{ steps.nuget_token.outputs.token }}
-        run: dotnet nuget push artifacts/*.nupkg --source https://api.nuget.org/v3/index.json
+        run: dotnet nuget push artifacts/*.nupkg --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
