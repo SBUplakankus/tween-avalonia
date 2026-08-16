@@ -1,39 +1,54 @@
 # Contributing
 
-## Building and testing
+## Project structure
 
-```sh
-dotnet build TweenAvalonia.slnx     # net8.0 + net10.0
-dotnet test TweenAvalonia.slnx
-dotnet pack src/TweenAvalonia -c Release
-```
+- `src/TweenAvalonia/` the package
+- `tests/TweenAvalonia.Tests/` NUnit tests
 
-The build must stay at **0 warnings** on both target frameworks: `TreatWarningsAsErrors`, `GenerateDocumentationFile` and nullable annotations are enabled.
+## Naming conventions
 
-## Code style
+- Methods and properties: PascalCase
+- Private fields: `_camelCase`
+- Local variables: camelCase
 
-- Every public member needs an XML doc comment. Enforced by the build.
-- No inline comments in code; XML docs only.
-- Keep the public surface minimal: defaults over parameters, `TweenSettings<T>` bundles over long signatures.
+## Coding standards
+
+- File-scoped namespaces
+- Using directives sorted alphabetically, system namespaces first
+- Prefer `var` when the type is obvious, explicit types when clarity is needed
+- XML doc comments on public and internal types and members
+- Inline comments sparingly, only when the intent is not obvious from the code
+- 4-space indentation, opening braces on a new line
+- Expression-bodied members for simple methods and properties
+- Argument validation with `ArgumentNullException.ThrowIfNull` / `ArgumentOutOfRangeException`. Let exceptions propagate; the package has no logging
 
 ## Tests
 
-- New behavior needs tests in `tests/TweenAvalonia.Tests/` (NUnit).
-- The zero-allocation guarantees are guarded: per-frame guards (5,000 ticks < 1 KB) and per-start guards (10,000 start/stop cycles < 1 KB after warm-up). New code paths that run per frame or per tween start must stay inside these budgets.
-- Tests drive the engine manually (`TweenEngine.Instance.AutoPumpEnabled = false` + `Update(...)`); fixtures are `[NonParallelizable]`.
+- New behavior needs NUnit tests; fixtures are `[NonParallelizable]`
+- The build must stay at 0 warnings on net8.0 and net10.0 (`TreatWarningsAsErrors`)
+- Zero-allocation guarantees are guarded: per-frame (5,000 ticks < 1 KB) and per-start (10,000 start/stop cycles < 1 KB after warm-up). New code paths that run per frame or per tween start must stay inside these budgets
+- Tests drive the engine manually (`TweenEngine.Instance.AutoPumpEnabled = false` + `Update(...)`)
 
 ## Adding a value type
 
-1. Implement the lerp in `Interpolators` (e.g. `LerpThickness`).
-2. Register it in `Interpolator<T>.Create` so the type resolves at creation time.
-3. Add a typed interpolation test and an allocation guard for the new type.
+1. Implement the lerp in `Interpolators`
+2. Register it in `Interpolator<T>.Create` so it resolves at creation time
+3. Add a typed interpolation test and an allocation guard
 
 ## Adding a tween factory
 
-1. Add the overloads (double-seconds + `TimeSpan`, plus `TweenSettings<T>` when it carries a value) in `Tween.cs` or `Tween.Factories.cs`.
-2. Keep every parameter beyond `(target, to)` optional with the library defaults.
-3. Add tests covering defaults, the time-span overload equivalence, and the handle lifecycle.
+1. Add the overloads (double-seconds + `TimeSpan`, plus `TweenSettings<T>` when it carries a value) in `Tween.cs` or `Tween.Factories.cs`
+2. Keep every parameter beyond `(target, to)` optional with the library defaults
+3. Add tests covering defaults, overload equivalence, and the handle lifecycle
 
-## Versioning
+## Versioning and releases
 
-Manual `Version` in `src/TweenAvalonia/TweenAvalonia.csproj` + `vX.Y.Z` git tags. 0.x until the API is validated by a real consumer, then 1.0. New entries go in `docs/CHANGELOG.md`.
+- Manual `Version` in `src/TweenAvalonia/TweenAvalonia.csproj`; 0.x until the API is validated by a real consumer
+- Release with a `vX.Y.Z` git tag. `publish.yml` verifies the tag matches the package version, builds and tests, then publishes via trusted publishing (no API keys)
+- New entries go in `docs/CHANGELOG.md`
+
+## Submitting changes
+
+- Branch naming: `feature/description`, `bugfix/description`, `refactor/description`, `docs/description`
+- Commit format: `[Feature]`, `[Bugfix]`, `[Refactor]`, `[Docs]` prefixes. Keep commits atomic and focused
+- Push and open a pull request targeting `main`
